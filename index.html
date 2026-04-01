@@ -542,9 +542,13 @@
 
       <!-- Tab 1: DIY prompt to copy -->
       <div class="soul-pane active" id="pane-diy">
-        <p class="diy-hint">Copy this prompt and paste it into <a href="https://claude.ai" target="_blank" style="color:var(--accent)">claude.ai</a>, ChatGPT, or any AI chatbot. Then paste the name and personality it gives you into the "Write your own" tab.</p>
+        <p class="diy-hint">Copy this prompt, paste it into <a href="https://claude.ai" target="_blank" style="color:var(--accent)">claude.ai</a> or any AI chatbot, then enter the name and personality it gives you in the "Write your own" tab.</p>
         <div class="prompt-box" id="diy-prompt"></div>
-        <button class="copy-prompt-btn" onclick="copyPrompt()">Copy Prompt to Clipboard</button>
+        <div style="display:flex;gap:6px">
+          <button class="copy-prompt-btn" onclick="copyPrompt()" style="flex:1">Copy Prompt to Clipboard</button>
+          <button class="copy-prompt-btn" onclick="rerollWords()" style="flex:0;white-space:nowrap;padding:8px 12px">Reroll Words</button>
+        </div>
+        <div style="color:var(--dim);font-size:0.6rem;margin-top:4px" id="inspiration-info"></div>
       </div>
 
       <!-- Tab 3: Manual entry -->
@@ -924,37 +928,77 @@ function switchSoulTab(tab) {
   if (tab === 'diy') updateDiyPrompt()
 }
 
+// --- Inspiration word system (exact replica from binary) ---
+const INSPIRATION_WORDS = [
+  "thunder","biscuit","void","accordion","moss","velvet","rust","pickle",
+  "crumb","whisper","gravy","frost","ember","soup","marble","thorn",
+  "honey","static","copper","dusk","sprocket","bramble","cinder","wobble",
+  "drizzle","flint","tinsel","murmur","clatter","gloom","nectar","quartz",
+  "shingle","tremor","umber","waffle","zephyr","bristle","dapple","fennel",
+  "gristle","huddle","kettle","lumen","mottle","nuzzle","pebble","quiver",
+  "ripple","sable","thistle","vellum","wicker","yonder","bauble","cobble",
+  "doily","fickle","gambit","hubris","jostle","knoll","larder","mantle",
+  "nimbus","oracle","plinth","quorum","relic","spindle","trellis","urchin",
+  "vortex","warble","xenon","yoke","zenith","alcove","brogue","chisel",
+  "dirge","epoch","fathom","glint","hearth","inkwell","jetsam","kiln",
+  "lattice","mirth","nook","obelisk","parsnip","quill","rune","sconce",
+  "tallow","umbra","verve","wisp","yawn","apex","brine","crag",
+  "dregs","etch","flume","gable","husk","ingot","jamb","knurl",
+  "loam","mote","nacre","ogle","prong","quip","rind","slat",
+  "tuft","vane","welt","yarn","bane","clove","dross","eave",
+  "fern","grit","hive","jade","keel","lilt","muse","nape",
+  "omen","pith","rook","silt","tome","urge","vex","wane",
+  "yew","zest"
+]
+
+// LCG word picker — exact algorithm from binary (k51)
+function pickInspirationWords(seed, count = 4) {
+  let q = seed >>> 0
+  const picked = new Set()
+  while (picked.size < count) {
+    q = (Math.imul(q, 1664525) + 1013904223) >>> 0
+    picked.add(q % INSPIRATION_WORDS.length)
+  }
+  return [...picked].map(i => INSPIRATION_WORDS[i])
+}
+
+// Generate a random seed for each prompt build (simulates inspirationSeed)
+let currentInspirationSeed = Math.floor(Math.random() * 1e9)
+
 function buildPromptText() {
   const stats = getStats(state.rarity)
-  const statSummary = STAT_NAMES
-    .map(n => `${n}: ${stats[n]}/100`)
-    .join(', ')
-  const peakStat = STAT_NAMES.reduce((a, b) => stats[a] >= stats[b] ? a : b)
-  const dumpStat = STAT_NAMES.reduce((a, b) => stats[a] <= stats[b] ? a : b)
+  const statsStr = STAT_NAMES.map(s => `${s}:${stats[s]}`).join(' ')
+  const words = pickInspirationWords(currentInspirationSeed, 4)
 
-  return `I need a name and personality for a small ASCII companion pet that lives beside a developer's terminal in Claude Code.
+  return `You generate coding companions — small creatures that live in a developer's terminal and occasionally comment on their work.
 
-Here are the companion's traits:
-- Species: ${state.species}
-- Rarity: ${state.rarity}
-- Shiny: ${state.shiny ? 'YES (rare sparkly variant)' : 'no'}
-- Hat: ${state.hat}
-- Eyes: ${state.eye}
-- Stats: ${statSummary}
-- Peak stat: ${peakStat}
-- Dump stat: ${dumpStat}
+Given a rarity, species, stats, and a handful of inspiration words, invent:
+- A name: ONE word, max 12 characters. Memorable, slightly absurd. No titles, no "the X", no epithets. Think pet name, not NPC name. The inspiration words are loose anchors — riff on one, mash two syllables, or just use the vibe. Examples: Pith, Dusker, Crumb, Brogue, Sprocket.
+- A one-sentence personality (specific, funny, a quirk that affects how they'd comment on code — should feel consistent with the stats)
 
-Rules:
-- Name should be 1-2 words, memorable, slightly absurd, and feel like a pet name a programmer would give. Examples: "Neckflap", "Biscuit", "Turbo", "Sir Chomps", "Glitch", "Wobbles", "Dumpling".
-- Personality should be exactly ONE sentence describing how this creature behaves as a coding companion. Reference their species traits, their peak stat (${peakStat}), and have a comedic edge.
-- Shiny companions should have slightly more dramatic or mythic personalities.
-- Higher rarity companions should feel more powerful/wise/chaotic.
+Higher rarity = weirder, more specific, more memorable. A legendary should be genuinely strange.
+Don't repeat yourself — every companion should feel distinct.
+
+Generate a companion.
+Rarity: ${state.rarity.toUpperCase()}
+Species: ${state.species}
+Stats: ${statsStr}
+Inspiration words: ${words.join(", ")}
+${state.shiny ? "SHINY variant — extra special." : ""}
+Make it memorable and distinct.
 
 Respond with just the name on the first line and the personality on the second line. Nothing else.`
 }
 
+function rerollWords() {
+  currentInspirationSeed = Math.floor(Math.random() * 1e9)
+  updateDiyPrompt()
+}
+
 function updateDiyPrompt() {
   document.getElementById('diy-prompt').textContent = buildPromptText()
+  const words = pickInspirationWords(currentInspirationSeed, 4)
+  document.getElementById('inspiration-info').textContent = `Inspiration words: ${words.join(', ')} (seed: ${currentInspirationSeed})`
 }
 
 function copyPrompt() {
