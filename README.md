@@ -12,11 +12,42 @@ Design your companion visually with live ASCII preview:
 - All 18 species with real sprite rendering
 - 5 rarities, 6 eye styles, 8 hats, shiny toggle
 - Generate a name and personality via AI prompt or write your own
-- Exports config JSON + step-by-step install instructions
+- Exports config JSON with step-by-step install instructions
+
+## Quick Start
+
+1. **Design your buddy** at [pickle-pixel.com/buddy](https://pickle-pixel.com/buddy) and click **Copy Config JSON**
+2. **Close all Claude Code sessions** (the binary can't be patched while running)
+3. **Download and run the patcher:**
+
+```bash
+curl -O https://raw.githubusercontent.com/Pickle-Pixel/claudecode-buddy-crack/main/buddy-crack.js
+node buddy-crack.js
+```
+
+That's it. The patcher reads the JSON from your clipboard, patches the binary, injects your companion, and creates a backup. One command.
+
+**Other ways to provide the JSON:**
+
+```bash
+node buddy-crack.js                    # Auto-read from clipboard (recommended)
+node buddy-crack.js companion.json     # Read from a file
+```
+
+4. **Restart Claude Code** — your custom companion appears
+
+## Commands
+
+```bash
+node buddy-crack.js                    # Patch + inject (clipboard or interactive paste)
+node buddy-crack.js companion.json     # Patch + inject from file
+node buddy-crack.js status             # Show patch state + companion info
+node buddy-crack.js unpatch            # Restore original binary from backup
+```
 
 ## How It Works
 
-The Buddy system stores only the companion's name and personality in `~/.claude.json`. The visual traits (rarity, species, eyes, hat, stats) are **recomputed from your account hash on every read** — editing the config does nothing because the recomputed values always overwrite stored ones.
+The Buddy system stores only the companion's name and personality in `~/.claude.json`. The visual traits (rarity, species, eyes, hat, stats) are **recomputed from your account hash on every read** — editing the config alone does nothing because the recomputed values always overwrite stored ones.
 
 The patcher flips a single spread operation in the compiled binary:
 
@@ -28,34 +59,7 @@ return { ...stored, ...bones }
 return { ...bones, ...stored }
 ```
 
-Same length, same structure, zero offset shift. Clean binary swap with automatic backup.
-
-## Quick Start
-
-1. **Design your buddy** on the [web creator](https://pickle-pixel.com/buddy) and copy the config JSON
-2. **Close Claude Code**
-3. **Download and run the patcher:**
-
-```bash
-node buddy-crack.js patch
-```
-
-4. **Paste your companion JSON into config:**
-
-```bash
-node buddy-crack.js inject '<your-copied-json>'
-```
-
-5. **Restart Claude Code** — your custom companion appears
-
-## Patcher Commands
-
-```bash
-node buddy-crack.js patch              # Patch binary (creates backup)
-node buddy-crack.js unpatch            # Restore original binary
-node buddy-crack.js status             # Show patch state + companion info
-node buddy-crack.js inject '<json>'    # Write companion JSON to config
-```
+Same length, same structure, zero offset shift. Clean binary swap with automatic backup and integrity verification.
 
 ## Companion Options
 
@@ -68,25 +72,34 @@ node buddy-crack.js inject '<json>'    # Write companion JSON to config
 | **Shiny** | 1% chance normally — or just toggle it on |
 | **Stats** | DEBUGGING, PATIENCE, CHAOS, WISDOM, SNARK (scaled by rarity) |
 
-## Reversibility
+## Safety
 
-The patcher always creates a backup before modifying anything. To restore:
+- **Automatic backup** — the original binary is backed up before any modification
+- **Config backup** — `~/.claude.json` is backed up before injection
+- **Integrity check** — binary size is verified after patching; mismatches trigger auto-restore
+- **Safe config injection** — only the `companion` field is modified; all other config (OAuth, permissions, settings) is preserved even if the JSON has syntax issues
+- **Fully local** — no data is sent anywhere. The buddy system has no server-side state
+- **Fully reversible** — `node buddy-crack.js unpatch` restores the original binary
 
-```bash
-node buddy-crack.js unpatch
-```
+## Platform Support
 
-The patch is **entirely local** — no data is sent to Anthropic's servers. The buddy system has no server-side state; all rendering happens client-side.
+| Platform | Binary Location | Clipboard | Status |
+|----------|----------------|-----------|--------|
+| **Windows** | `~/.local/bin/claude.exe` | PowerShell (UTF-8) | Tested |
+| **macOS** | `~/.local/bin/claude` | pbpaste | Untested |
+| **Linux** | `~/.local/bin/claude` | xclip | Untested |
+
+All platforms follow the XDG Base Directory specification. Version binaries are stored in `~/.local/share/claude/versions/`.
 
 ## Version Compatibility
 
-The binary patch targets specific minified variable names in Claude Code **v2.1.89**. Different versions may use different variable names, which would require re-deriving the patch pattern. The `status` command will tell you if the pattern is found.
+The binary patch targets specific minified variable names in Claude Code **v2.1.89**. Different versions will have different minified names, which means the patch pattern won't match. The tool detects this and tells you — it won't modify a binary it doesn't recognize. When Claude Code updates, you'll need an updated patch pattern.
 
 ## Requirements
 
-- Node.js 18+
-- Claude Code installed (`~/.local/bin/claude.exe` on Windows)
-- The `BUDDY` feature flag must be active (available during April 2026 teaser window and after May 2026 launch)
+- [Node.js](https://nodejs.org) 18+
+- Claude Code installed (native installation)
+- The `BUDDY` feature flag must be active (April 2026 teaser window onward)
 
 ## Technical Details
 

@@ -573,7 +573,7 @@
       <div class="step-num">1</div>
       <div class="step-content">
         <div class="step-title">Download the patcher</div>
-        <div class="step-desc">Save <strong>buddy-crack.js</strong> to any folder. It's a standalone Node.js script — no dependencies. Requires <a href="https://nodejs.org" target="_blank" style="color:var(--accent)">Node.js 18+</a>.</div>
+        <div class="step-desc">Save <strong>buddy-crack.js</strong> to any folder. Standalone Node.js script, no dependencies. Requires <a href="https://nodejs.org" target="_blank" style="color:var(--accent)">Node.js 18+</a>.</div>
         <div class="code-block">curl -O https://raw.githubusercontent.com/Pickle-Pixel/claudecode-buddy-crack/main/buddy-crack.js<button class="code-copy-btn" onclick="copyCode(this)">copy</button></div>
         <div class="step-note">Or <a href="https://github.com/Pickle-Pixel/claudecode-buddy-crack" target="_blank" style="color:var(--accent)">download from GitHub</a> directly.</div>
       </div>
@@ -590,46 +590,16 @@
     <div class="step">
       <div class="step-num">3</div>
       <div class="step-content">
-        <div class="step-title">Patch the binary</div>
-        <div class="step-desc">This creates a backup and patches <code>claude.exe</code> to accept custom companion data. Fully reversible.</div>
-
-        <div class="platform-tabs">
-          <button class="platform-tab active" onclick="switchPlatform('win')">Windows</button>
-          <button class="platform-tab" onclick="switchPlatform('mac')">macOS / Linux</button>
-        </div>
-        <div class="platform-pane active" id="plat-win">
-          <div class="code-block">node buddy-crack.js patch<button class="code-copy-btn" onclick="copyCode(this)">copy</button></div>
-        </div>
-        <div class="platform-pane" id="plat-mac">
-          <div class="code-block">node buddy-crack.js patch<button class="code-copy-btn" onclick="copyCode(this)">copy</button></div>
-          <div class="step-note">On macOS, the binary is at ~/.claude/local/claude. The patcher auto-detects your platform.</div>
-        </div>
+        <div class="step-title">Run the patcher</div>
+        <div class="step-desc">With the JSON still on your clipboard from step "Copy Config JSON" above, run:</div>
+        <div class="code-block">node buddy-crack.js<button class="code-copy-btn" onclick="copyCode(this)">copy</button></div>
+        <div class="step-desc" style="margin-top:6px">The patcher automatically reads the JSON from your clipboard, patches the binary, injects your companion into the config, and creates backups of both. One command does everything.</div>
+        <div class="step-note">If clipboard doesn't work, it will prompt you to paste the JSON interactively. You can also save the JSON to a file and run: <code>node buddy-crack.js companion.json</code></div>
       </div>
     </div>
 
     <div class="step">
       <div class="step-num">4</div>
-      <div class="step-content">
-        <div class="step-title">Paste your companion into config</div>
-        <div class="step-desc">Open your Claude config file and replace (or add) the <code>"companion"</code> field with the JSON you copied.</div>
-
-        <div class="platform-tabs">
-          <button class="platform-tab active" onclick="switchPlatform2('win2')">Windows</button>
-          <button class="platform-tab" onclick="switchPlatform2('mac2')">macOS / Linux</button>
-        </div>
-        <div class="platform-pane active" id="plat-win2">
-          <div class="code-block">notepad %USERPROFILE%\.claude.json<button class="code-copy-btn" onclick="copyCode(this)">copy</button></div>
-        </div>
-        <div class="platform-pane" id="plat-mac2">
-          <div class="code-block">nano ~/.claude.json<button class="code-copy-btn" onclick="copyCode(this)">copy</button></div>
-        </div>
-        <div class="step-desc" style="margin-top:6px">Find the <code>"companion"</code> key and replace its value with the JSON you copied. If there's no <code>"companion"</code> key, add it at the top level of the JSON object.</div>
-        <div class="step-note">Or use the patcher directly: <code>node buddy-crack.js inject '&lt;your-json&gt;'</code></div>
-      </div>
-    </div>
-
-    <div class="step">
-      <div class="step-num">5</div>
       <div class="step-content">
         <div class="step-title">Restart Claude Code</div>
         <div class="step-desc">Open Claude Code. Your custom companion should appear with the rarity, species, hat, and eyes you chose.</div>
@@ -637,10 +607,19 @@
     </div>
 
     <div class="step">
-      <div class="step-num" style="background:var(--text-dim)">↩</div>
+      <div class="step-num" style="background:var(--text-dim)">?</div>
+      <div class="step-content">
+        <div class="step-title">Check status</div>
+        <div class="step-desc">Verify the patch is applied and your companion is loaded:</div>
+        <div class="code-block">node buddy-crack.js status<button class="code-copy-btn" onclick="copyCode(this)">copy</button></div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num" style="background:var(--text-dim)">&#8617;</div>
       <div class="step-content">
         <div class="step-title">To undo</div>
-        <div class="step-desc">The patcher creates a backup of the original binary. Restore it anytime:</div>
+        <div class="step-desc">The patcher creates backups of both the binary and config. Restore anytime:</div>
         <div class="code-block">node buddy-crack.js unpatch<button class="code-copy-btn" onclick="copyCode(this)">copy</button></div>
       </div>
     </div>
@@ -929,22 +908,6 @@ function copyCode(btn) {
     btn.textContent = 'done'
     setTimeout(() => btn.textContent = 'copy', 1200)
   })
-}
-
-function switchPlatform(id) {
-  document.getElementById('plat-win').classList.toggle('active', id === 'win')
-  document.getElementById('plat-mac').classList.toggle('active', id === 'mac')
-  const tabs = document.getElementById('plat-win').previousElementSibling.querySelectorAll('.platform-tab')
-  tabs[0].classList.toggle('active', id === 'win')
-  tabs[1].classList.toggle('active', id === 'mac')
-}
-
-function switchPlatform2(id) {
-  document.getElementById('plat-win2').classList.toggle('active', id === 'win2')
-  document.getElementById('plat-mac2').classList.toggle('active', id === 'mac2')
-  const tabs = document.getElementById('plat-win2').previousElementSibling.querySelectorAll('.platform-tab')
-  tabs[0].classList.toggle('active', id === 'win2')
-  tabs[1].classList.toggle('active', id === 'mac2')
 }
 
 // --- Init ---

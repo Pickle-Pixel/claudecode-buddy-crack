@@ -20,17 +20,11 @@ const readline = require('readline')
 const IS_WIN = process.platform === 'win32'
 const IS_MAC = process.platform === 'darwin'
 
-const CLAUDE_BIN = IS_WIN
-  ? path.join(os.homedir(), '.local', 'bin', 'claude.exe')
-  : IS_MAC
-    ? path.join(os.homedir(), '.claude', 'local', 'claude')
-    : path.join(os.homedir(), '.local', 'bin', 'claude')
-
+// All platforms follow XDG: ~/.local/bin/claude(.exe)
+// Versions stored in: ~/.local/share/claude/versions/
+const CLAUDE_BIN = path.join(os.homedir(), '.local', 'bin', IS_WIN ? 'claude.exe' : 'claude')
 const CLAUDE_BACKUP = CLAUDE_BIN + '.bak'
-
-const VERSIONS_DIR = IS_WIN
-  ? path.join(os.homedir(), '.local', 'share', 'claude', 'versions')
-  : path.join(os.homedir(), '.claude', 'versions')
+const VERSIONS_DIR = path.join(os.homedir(), '.local', 'share', 'claude', 'versions')
 
 const CONFIG_PATH = path.join(os.homedir(), '.claude.json')
 
@@ -124,15 +118,27 @@ function getVersionBinaries() {
 // with permissions, tool approvals, OAuth tokens, etc. If we can't parse it,
 // we do a raw string injection instead of risking a full overwrite.
 
+function backupConfig() {
+  const backupPath = CONFIG_PATH + '.bak'
+  if (fs.existsSync(CONFIG_PATH)) {
+    fs.copyFileSync(CONFIG_PATH, backupPath)
+    return backupPath
+  }
+  return null
+}
+
 function injectCompanion(companion) {
   const companionJSON = JSON.stringify(companion, null, 2)
   const indented = companionJSON.split('\n').map((l, i) => i === 0 ? l : '  ' + l).join('\n')
 
   if (!fs.existsSync(CONFIG_PATH)) {
-    // No config at all — safe to create
     fs.writeFileSync(CONFIG_PATH, JSON.stringify({ companion }, null, 2) + '\n')
     return
   }
+
+  // Always backup config before modifying
+  const backupPath = backupConfig()
+  if (backupPath) console.log(`  ✓ Config backed up to ${backupPath}`)
 
   const raw = fs.readFileSync(CONFIG_PATH, 'utf8')
 
@@ -146,7 +152,6 @@ function injectCompanion(companion) {
   }
 
   if (config) {
-    // Parsed successfully — safe to write back
     config.companion = companion
     fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2) + '\n')
     return
@@ -155,12 +160,25 @@ function injectCompanion(companion) {
   // Could NOT parse the config. Do a raw string replacement to avoid nuking it.
   console.log('  (Config has syntax issues — using safe string injection)')
 
-  // Try to find and replace existing "companion": {...} block
-  const companionRegex = /"companion"\s*:\s*\{[^}]*(?:\{[^}]*\}[^}]*)*\}/
-  if (companionRegex.test(raw)) {
-    const replaced = raw.replace(companionRegex, `"companion": ${indented}`)
-    fs.writeFileSync(CONFIG_PATH, replaced)
-    return
+  // Find the "companion" key and its full value using brace-depth counting
+  const key = '"companion"'
+  const keyIdx = raw.indexOf(key)
+  if (keyIdx !== -1) {
+    // Find the opening brace after the key
+    const afterKey = raw.indexOf('{', keyIdx + key.length)
+    if (afterKey !== -1) {
+      // Walk forward counting braces to find the matching close
+      let depth = 0
+      let end = afterKey
+      for (let i = afterKey; i < raw.length; i++) {
+        if (raw[i] === '{') depth++
+        else if (raw[i] === '}') { depth--; if (depth === 0) { end = i; break } }
+      }
+      const before = raw.slice(0, keyIdx)
+      const after = raw.slice(end + 1)
+      fs.writeFileSync(CONFIG_PATH, before + `"companion": ${indented}` + after)
+      return
+    }
   }
 
   // No existing companion field — inject after the opening brace
@@ -173,7 +191,7 @@ function injectCompanion(companion) {
     return
   }
 
-  // Last resort — should never reach here
+  // Last resort
   console.error('  ✗ Could not safely modify config. Save this JSON and add it manually:')
   console.log(companionJSON)
 }
@@ -254,15 +272,13 @@ function readClipboard() {
 const EYE_REPAIR = { '?': '✦', '??': '✦', '\ufffd': '✦' }
 function repairCompanion(obj) {
   if (obj && obj.eye && !EYES.includes(obj.eye)) {
-    // If eye got corrupted, try to repair it from the original eye list
-    // Most common corruption: ✦ → ? on Windows
     if (EYE_REPAIR[obj.eye]) {
       obj.eye = EYE_REPAIR[obj.eye]
+      console.log(`  (Repaired corrupted eye character → ${obj.eye})`)
     } else {
-      // Default to star eyes since they're the most commonly selected
-      obj.eye = '✦'
+      console.log(`  Warning: unrecognized eye "${obj.eye}" — may be from a newer version.`)
+      console.log(`  Known eyes: ${EYES.join(' ')}`)
     }
-    console.log(`  (Repaired corrupted eye character → ${obj.eye})`)
   }
   return obj
 }
@@ -452,8 +468,25 @@ for (const ver of getVersionBinaries()) {
 }
 
 if (!mainOk) {
-  console.error('\n  ✗ Failed to patch main binary. Aborting.\n')
+  // Restore from backup if patch failed
+  if (fs.existsSync(CLAUDE_BACKUP)) {
+    fs.copyFileSync(CLAUDE_BACKUP, CLAUDE_BIN)
+    console.log('  ✓ Restored original binary from backup')
+  }
+  console.error('\n  ✗ Failed to patch. Binary restored. This version may not be supported.\n')
   process.exit(1)
+}
+
+// Verify patched binary size matches backup (catch truncated writes)
+if (fs.existsSync(CLAUDE_BACKUP)) {
+  const origSize = fs.statSync(CLAUDE_BACKUP).size
+  const patchedSize = fs.statSync(CLAUDE_BIN).size
+  if (origSize !== patchedSize) {
+    fs.copyFileSync(CLAUDE_BACKUP, CLAUDE_BIN)
+    console.error('  ✗ Binary size mismatch after patch — restored from backup.')
+    console.error(`    Expected: ${origSize} bytes, got: ${patchedSize} bytes\n`)
+    process.exit(1)
+  }
 }
 
 // Step 3: Inject (safe — never overwrites unrelated config fields)
