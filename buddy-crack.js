@@ -28,10 +28,14 @@ const VERSIONS_DIR = path.join(os.homedir(), '.local', 'share', 'claude', 'versi
 
 const CONFIG_PATH = path.join(os.homedir(), '.claude.json')
 
-// --- Patch pattern (v2.1.89) ---
+// --- Patch pattern ---
 // getCompanion() minified: return{...H,...$} (bones win) → return{...$,...H} (stored win)
-const ORIGINAL = Buffer.from('{bones:$}=Gh$(Th$());return{...H,...$}')
-const PATCHED  = Buffer.from('{bones:$}=Gh$(Th$());return{...$,...H}')
+// The function names between bones destructuring and return vary across platforms
+// (e.g. Gh$/Th$ on Windows, ZE8/vE8 on macOS) so we match by landmark instead.
+const LANDMARK    = Buffer.from('let{bones:$}=')
+const ORIG_RETURN = Buffer.from('return{...H,...$}')
+const PATCH_RETURN = Buffer.from('return{...$,...H}')
+const SEARCH_WINDOW = 60
 
 // --- Valid options ---
 const SPECIES = ['duck','goose','blob','cat','dragon','octopus','owl','penguin','turtle','snail','ghost','axolotl','capybara','cactus','robot','rabbit','mushroom','chonk']
@@ -54,11 +58,27 @@ function findAll(buf, pattern) {
   return positions
 }
 
+function findPatchSites(data) {
+  const sites = []
+  const landmarks = findAll(data, LANDMARK)
+  for (const lm of landmarks) {
+    const windowEnd = Math.min(data.length, lm + LANDMARK.length + SEARCH_WINDOW)
+    const window = data.slice(lm, windowEnd)
+    const origOff = window.indexOf(ORIG_RETURN)
+    const patchOff = window.indexOf(PATCH_RETURN)
+    if (origOff !== -1) sites.push({ offset: lm + origOff, state: 'original' })
+    else if (patchOff !== -1) sites.push({ offset: lm + patchOff, state: 'patched' })
+  }
+  return sites
+}
+
 function patchStatus(binPath) {
   if (!fs.existsSync(binPath)) return 'missing'
   const data = fs.readFileSync(binPath)
-  const orig = findAll(data, ORIGINAL).length
-  const patched = findAll(data, PATCHED).length
+  const sites = findPatchSites(data)
+  if (sites.length === 0) return 'unknown'
+  const orig = sites.filter(s => s.state === 'original').length
+  const patched = sites.filter(s => s.state === 'patched').length
   if (patched > 0 && orig === 0) return 'patched'
   if (orig > 0 && patched === 0) return 'original'
   if (orig > 0 && patched > 0) return 'partial'
@@ -71,23 +91,25 @@ function applyPatch(binPath) {
     if (e.code === 'EBUSY') { console.error(`  ✗ File is locked — close Claude Code first`); return 'busy' }
     throw e
   }
-  const positions = findAll(data, ORIGINAL)
+  const sites = findPatchSites(data)
 
-  if (positions.length === 0) {
-    if (findAll(data, PATCHED).length > 0) {
-      console.log(`  ✓ Already patched`)
-      return true
-    }
+  if (sites.length === 0) {
     console.error(`  ✗ Pattern not found — unsupported version`)
     return false
   }
 
-  for (const pos of positions) PATCHED.copy(data, pos)
+  const origSites = sites.filter(s => s.state === 'original')
+  if (origSites.length === 0) {
+    console.log(`  ✓ Already patched`)
+    return true
+  }
+
+  for (const site of origSites) PATCH_RETURN.copy(data, site.offset)
   try { fs.writeFileSync(binPath, data) } catch (e) {
     if (e.code === 'EBUSY') { console.error(`  ✗ File is locked — close Claude Code first`); return 'busy' }
     throw e
   }
-  console.log(`  ✓ Patched (${positions.length} location${positions.length > 1 ? 's' : ''})`)
+  console.log(`  ✓ Patched (${origSites.length} location${origSites.length > 1 ? 's' : ''})`)
   return true
 }
 
@@ -97,23 +119,25 @@ function removePatch(binPath) {
     if (e.code === 'EBUSY') { console.error(`  ✗ File is locked — close Claude Code first`); return 'busy' }
     throw e
   }
-  const positions = findAll(data, PATCHED)
+  const sites = findPatchSites(data)
 
-  if (positions.length === 0) {
-    if (findAll(data, ORIGINAL).length > 0) {
-      console.log(`  ✓ Already original`)
-      return true
-    }
+  if (sites.length === 0) {
     console.error(`  ✗ Pattern not found`)
     return false
   }
 
-  for (const pos of positions) ORIGINAL.copy(data, pos)
+  const patchedSites = sites.filter(s => s.state === 'patched')
+  if (patchedSites.length === 0) {
+    console.log(`  ✓ Already original`)
+    return true
+  }
+
+  for (const site of patchedSites) ORIG_RETURN.copy(data, site.offset)
   try { fs.writeFileSync(binPath, data) } catch (e) {
     if (e.code === 'EBUSY') { console.error(`  ✗ File is locked — close Claude Code first`); return 'busy' }
     throw e
   }
-  console.log(`  ✓ Restored (${positions.length} location${positions.length > 1 ? 's' : ''})`)
+  console.log(`  ✓ Restored (${patchedSites.length} location${patchedSites.length > 1 ? 's' : ''})`)
   return true
 }
 
