@@ -239,6 +239,57 @@ function injectCompanion(companion) {
   console.log(companionJSON)
 }
 
+function removeCompanion() {
+  if (!fs.existsSync(CONFIG_PATH)) return
+
+  const backupPath = backupConfig()
+  if (backupPath) console.log(`  ✓ Config backed up to ${backupPath}`)
+
+  const raw = fs.readFileSync(CONFIG_PATH, 'utf8')
+
+  let config
+  try {
+    config = JSON.parse(raw)
+  } catch {
+    const cleaned = raw.replace(/,\s*([\]}])/g, '$1')
+    try { config = JSON.parse(cleaned) } catch { config = null }
+  }
+
+  if (config) {
+    if (!config.companion) { console.log('  ✓ No companion in config'); return }
+    delete config.companion
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2) + '\n')
+    console.log(`  ✓ Removed companion from ${CONFIG_PATH}`)
+    return
+  }
+
+  // Could NOT parse — use raw string removal
+  const key = '"companion"'
+  const keyIdx = raw.indexOf(key)
+  if (keyIdx === -1) { console.log('  ✓ No companion in config'); return }
+
+  const afterKey = raw.indexOf('{', keyIdx + key.length)
+  if (afterKey !== -1) {
+    let depth = 0
+    let end = afterKey
+    for (let i = afterKey; i < raw.length; i++) {
+      if (raw[i] === '{') depth++
+      else if (raw[i] === '}') { depth--; if (depth === 0) { end = i; break } }
+    }
+    // Remove the key, value, and any trailing comma/whitespace
+    let removeEnd = end + 1
+    const afterValue = raw.slice(removeEnd).match(/^\s*,?\s*/)
+    if (afterValue) removeEnd += afterValue[0].length
+    // Also consume a leading comma if this wasn't the first key
+    let removeStart = keyIdx
+    const beforeKey = raw.slice(0, keyIdx)
+    const leadingComma = beforeKey.match(/,\s*$/)
+    if (leadingComma) removeStart -= leadingComma[0].length
+    fs.writeFileSync(CONFIG_PATH, raw.slice(0, removeStart) + raw.slice(removeEnd))
+    console.log(`  ✓ Removed companion from ${CONFIG_PATH}`)
+  }
+}
+
 function readConfig() {
   if (!fs.existsSync(CONFIG_PATH)) return {}
   try {
@@ -412,6 +463,10 @@ if (mode === 'unpatch') {
     console.log(`  ${ver.name}`)
     removePatch(ver.path)
   }
+
+  // Remove companion from config so it doesn't show up as a dead ghost
+  console.log('\n  --- Cleaning Config ---\n')
+  removeCompanion()
 
   if (hasBusy) {
     console.log('\n  ⚠ Main binary is locked. Close all Claude Code sessions and run again.\n')
