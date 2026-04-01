@@ -66,7 +66,11 @@ function patchStatus(binPath) {
 }
 
 function applyPatch(binPath) {
-  const data = fs.readFileSync(binPath)
+  let data
+  try { data = fs.readFileSync(binPath) } catch (e) {
+    if (e.code === 'EBUSY') { console.error(`  ✗ File is locked — close Claude Code first`); return 'busy' }
+    throw e
+  }
   const positions = findAll(data, ORIGINAL)
 
   if (positions.length === 0) {
@@ -79,13 +83,20 @@ function applyPatch(binPath) {
   }
 
   for (const pos of positions) PATCHED.copy(data, pos)
-  fs.writeFileSync(binPath, data)
+  try { fs.writeFileSync(binPath, data) } catch (e) {
+    if (e.code === 'EBUSY') { console.error(`  ✗ File is locked — close Claude Code first`); return 'busy' }
+    throw e
+  }
   console.log(`  ✓ Patched (${positions.length} location${positions.length > 1 ? 's' : ''})`)
   return true
 }
 
 function removePatch(binPath) {
-  const data = fs.readFileSync(binPath)
+  let data
+  try { data = fs.readFileSync(binPath) } catch (e) {
+    if (e.code === 'EBUSY') { console.error(`  ✗ File is locked — close Claude Code first`); return 'busy' }
+    throw e
+  }
   const positions = findAll(data, PATCHED)
 
   if (positions.length === 0) {
@@ -98,7 +109,10 @@ function removePatch(binPath) {
   }
 
   for (const pos of positions) ORIGINAL.copy(data, pos)
-  fs.writeFileSync(binPath, data)
+  try { fs.writeFileSync(binPath, data) } catch (e) {
+    if (e.code === 'EBUSY') { console.error(`  ✗ File is locked — close Claude Code first`); return 'busy' }
+    throw e
+  }
   console.log(`  ✓ Restored (${positions.length} location${positions.length > 1 ? 's' : ''})`)
   return true
 }
@@ -347,13 +361,22 @@ const mode = args[0] || ''
 // --- UNPATCH ---
 if (mode === 'unpatch') {
   console.log('\n  Restoring original binary...\n')
+  let hasBusy = false
 
   if (fs.existsSync(CLAUDE_BACKUP)) {
-    fs.copyFileSync(CLAUDE_BACKUP, CLAUDE_BIN)
-    console.log(`  ✓ Restored from backup`)
+    try {
+      fs.copyFileSync(CLAUDE_BACKUP, CLAUDE_BIN)
+      console.log(`  ✓ Restored from backup`)
+    } catch (e) {
+      if (e.code === 'EBUSY') {
+        console.error(`  ✗ ${CLAUDE_BIN} is locked — close Claude Code first`)
+        hasBusy = true
+      } else throw e
+    }
   } else {
     console.log(`  ${CLAUDE_BIN}`)
-    removePatch(CLAUDE_BIN)
+    const r = removePatch(CLAUDE_BIN)
+    if (r === 'busy') hasBusy = true
   }
 
   for (const ver of getVersionBinaries()) {
@@ -361,8 +384,12 @@ if (mode === 'unpatch') {
     removePatch(ver.path)
   }
 
-  console.log('\n  Done. Restart Claude Code.\n')
-  process.exit(0)
+  if (hasBusy) {
+    console.log('\n  ⚠ Main binary is locked. Close all Claude Code sessions and run again.\n')
+  } else {
+    console.log('\n  Done. Restart Claude Code.\n')
+  }
+  process.exit(hasBusy ? 1 : 0)
 }
 
 // --- STATUS ---
@@ -453,9 +480,17 @@ if (!fs.existsSync(CLAUDE_BIN)) {
   process.exit(1)
 }
 
-if (!fs.existsSync(CLAUDE_BACKUP)) {
-  fs.copyFileSync(CLAUDE_BIN, CLAUDE_BACKUP)
-  console.log(`  ✓ Backup created`)
+try {
+  if (!fs.existsSync(CLAUDE_BACKUP)) {
+    fs.copyFileSync(CLAUDE_BIN, CLAUDE_BACKUP)
+    console.log(`  ✓ Backup created`)
+  }
+} catch (e) {
+  if (e.code === 'EBUSY') {
+    console.error(`  ✗ Binary is locked — close all Claude Code sessions and try again.\n`)
+    process.exit(1)
+  }
+  throw e
 }
 
 // Step 2: Patch
@@ -467,13 +502,19 @@ for (const ver of getVersionBinaries()) {
   applyPatch(ver.path)
 }
 
+if (mainOk === 'busy') {
+  console.error('\n  ✗ Binary is locked — close all Claude Code sessions and try again.\n')
+  process.exit(1)
+}
+
 if (!mainOk) {
-  // Restore from backup if patch failed
-  if (fs.existsSync(CLAUDE_BACKUP)) {
-    fs.copyFileSync(CLAUDE_BACKUP, CLAUDE_BIN)
-    console.log('  ✓ Restored original binary from backup')
-  }
-  console.error('\n  ✗ Failed to patch. Binary restored. This version may not be supported.\n')
+  try {
+    if (fs.existsSync(CLAUDE_BACKUP)) {
+      fs.copyFileSync(CLAUDE_BACKUP, CLAUDE_BIN)
+      console.log('  ✓ Restored original binary from backup')
+    }
+  } catch {}
+  console.error('\n  ✗ Failed to patch. This version may not be supported.\n')
   process.exit(1)
 }
 
@@ -482,7 +523,7 @@ if (fs.existsSync(CLAUDE_BACKUP)) {
   const origSize = fs.statSync(CLAUDE_BACKUP).size
   const patchedSize = fs.statSync(CLAUDE_BIN).size
   if (origSize !== patchedSize) {
-    fs.copyFileSync(CLAUDE_BACKUP, CLAUDE_BIN)
+    try { fs.copyFileSync(CLAUDE_BACKUP, CLAUDE_BIN) } catch {}
     console.error('  ✗ Binary size mismatch after patch — restored from backup.')
     console.error(`    Expected: ${origSize} bytes, got: ${patchedSize} bytes\n`)
     process.exit(1)
