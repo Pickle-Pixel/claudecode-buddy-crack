@@ -2,7 +2,15 @@
 
 Customize your [Claude Code](https://docs.anthropic.com/en/docs/claude-code) companion pet. Pick your species, rarity, hat, eyes, and shiny status — then patch the binary to make it stick.
 
-Claude Code has a hidden gacha companion system (the Buddy system) that assigns you a deterministic pet based on your account UUID. Your rarity, species, and stats are locked to your identity. This toolkit lets you override that and choose your own.
+Claude Code has a hidden gacha companion system (the Buddy system) that assigns you a deterministic pet based on your account UUID. Your rarity, species, and stats are locked to your identity. This tool lets you override that and choose your own.
+
+## [Use the Web Creator](https://picklepixel.dev/claudecode-buddy-crack)
+
+Design your companion visually with live ASCII preview:
+- All 18 species with real sprite rendering
+- 5 rarities, 6 eye styles, 8 hats, shiny toggle
+- Generate a name and personality via AI prompt or write your own
+- Exports config JSON + step-by-step install instructions
 
 ## How It Works
 
@@ -22,80 +30,30 @@ Same length, same structure, zero offset shift. Clean binary swap with automatic
 
 ## Quick Start
 
+1. **Design your buddy** on the [web creator](https://picklepixel.dev/claudecode-buddy-crack) and copy the config JSON
+2. **Close Claude Code**
+3. **Download and run the patcher:**
+
 ```bash
-# 1. Close Claude Code first
-
-# 2. Patch the binary (creates backup automatically)
 node buddy-crack.js patch
-
-# 3. Pick your companion (interactive)
-node buddy-showcase.js
-
-# 4. Or inject directly
-node buddy-crack.js inject '{"rarity":"legendary","species":"cat","eye":"✦","hat":"tophat","shiny":true}'
-
-# 5. Restart Claude Code
 ```
 
-## Tools
+4. **Paste your companion JSON into config:**
 
-### `buddy-crack.js` — Patcher + Injector
+```bash
+node buddy-crack.js inject '<your-copied-json>'
+```
 
-The main tool. Patches the Claude Code binary and writes companion data to config.
+5. **Restart Claude Code** — your custom companion appears
+
+## Patcher Commands
 
 ```bash
 node buddy-crack.js patch              # Patch binary (creates backup)
 node buddy-crack.js unpatch            # Restore original binary
 node buddy-crack.js status             # Show patch state + companion info
-node buddy-crack.js inject -i          # Interactive companion builder
 node buddy-crack.js inject '<json>'    # Write companion JSON to config
-node buddy-crack.js roll [uuid]        # Preview what a userId rolls
 ```
-
-### `buddy-showcase.js` — Visual Catalog
-
-Browse all 3,672 valid companion combinations with ASCII art, filters, and pick-to-inject.
-
-```bash
-node buddy-showcase.js                           # Interactive wizard
-node buddy-showcase.js --rarity legendary        # Filter by rarity
-node buddy-showcase.js --species dragon          # Filter by species
-node buddy-showcase.js --hat crown --shiny       # Combine filters
-node buddy-showcase.js --eye 1                   # Filter by eye (0-5)
-```
-
-**Eyes:** `0:·` `1:✦` `2:×` `3:◉` `4:@` `5:°`
-
-### `buddy-bruteforce.js` — Gacha Roller
-
-Brute-force random UUIDs through the exact gacha algorithm to find rare rolls. Useful for statistics and discovery.
-
-```bash
-node buddy-bruteforce.js hunt legendary            # Find legendary rolls
-node buddy-bruteforce.js hunt legendary --shiny    # Find shiny legendaries
-node buddy-bruteforce.js hunt epic --max=50000000  # Custom attempt limit
-node buddy-bruteforce.js check <uuid>              # Check a specific UUID
-node buddy-bruteforce.js yours                     # Show your current roll
-```
-
-### `buddy-web/` — Web Creator
-
-A web app for designing companions visually with live ASCII preview, soul generation, and step-by-step install instructions.
-
-```bash
-cd buddy-web
-node server.js
-# Open http://localhost:3000
-```
-
-Features:
-- Visual picker for all species, rarities, eyes, hats, and shiny
-- Three ways to generate name/personality:
-  - **Auto:** Paste an Anthropic API key, Claude Haiku generates it
-  - **DIY:** Copy a ready-made prompt to paste into any chatbot
-  - **Manual:** Type your own name and personality
-- Exports config JSON ready to paste into `~/.claude.json`
-- Built-in install guide with platform-specific instructions
 
 ## Companion Options
 

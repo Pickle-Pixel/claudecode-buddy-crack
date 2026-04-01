@@ -212,36 +212,6 @@
   /* --- Soul section --- */
   .soul-section { margin-top: 1rem; }
 
-  .api-key-input {
-    width: 100%;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    color: var(--text);
-    padding: 8px;
-    border-radius: 6px;
-    font-family: inherit;
-    font-size: 0.75rem;
-    margin-bottom: 8px;
-  }
-  .api-key-input::placeholder { color: var(--text-dim); }
-  .api-key-input:focus { outline: none; border-color: var(--accent); }
-
-  .generate-btn {
-    width: 100%;
-    background: var(--accent);
-    border: none;
-    color: #fff;
-    padding: 10px;
-    border-radius: 6px;
-    cursor: pointer;
-    font-family: inherit;
-    font-size: 0.85rem;
-    font-weight: bold;
-    transition: opacity 0.15s;
-  }
-  .generate-btn:hover { opacity: 0.85; }
-  .generate-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-
   .soul-result {
     margin-top: 0.75rem;
     padding: 0.75rem;
@@ -566,22 +536,13 @@
       <h2>Name & Personality</h2>
 
       <div class="soul-tabs">
-        <button class="soul-tab active" onclick="switchSoulTab('auto')">Auto (API)</button>
-        <button class="soul-tab" onclick="switchSoulTab('diy')">DIY (Prompt)</button>
-        <button class="soul-tab" onclick="switchSoulTab('manual')">Manual</button>
+        <button class="soul-tab active" onclick="switchSoulTab('diy')">Generate with AI</button>
+        <button class="soul-tab" onclick="switchSoulTab('manual')">Write your own</button>
       </div>
 
-      <!-- Tab 1: Auto with API key -->
-      <div class="soul-pane active" id="pane-auto">
-        <input type="password" class="api-key-input" id="api-key" placeholder="Anthropic API key (sk-ant-...)" />
-        <button class="generate-btn" id="gen-btn" onclick="generateSoul()">Generate Name & Personality</button>
-        <p class="regenerate-hint">Uses Claude Haiku — fraction of a cent per call</p>
-        <div class="error-msg" id="error-msg"></div>
-      </div>
-
-      <!-- Tab 2: DIY prompt to copy -->
-      <div class="soul-pane" id="pane-diy">
-        <p class="diy-hint">Copy this prompt and paste it into Claude (claude.ai, ChatGPT, or any LLM). Then paste the result back in the Manual tab.</p>
+      <!-- Tab 1: DIY prompt to copy -->
+      <div class="soul-pane active" id="pane-diy">
+        <p class="diy-hint">Copy this prompt and paste it into <a href="https://claude.ai" target="_blank" style="color:var(--accent)">claude.ai</a>, ChatGPT, or any AI chatbot. Then paste the name and personality it gives you into the "Write your own" tab.</p>
         <div class="prompt-box" id="diy-prompt"></div>
         <button class="copy-prompt-btn" onclick="copyPrompt()">Copy Prompt to Clipboard</button>
       </div>
@@ -612,9 +573,9 @@
       <div class="step-num">1</div>
       <div class="step-content">
         <div class="step-title">Download the patcher</div>
-        <div class="step-desc">Save <strong>buddy-crack.js</strong> to any folder. It's a standalone Node.js script — no dependencies.</div>
-        <div class="code-block">curl -O https://raw.githubusercontent.com/anthropics/claude-code-leaked/main/buddy-crack.js<button class="code-copy-btn" onclick="copyCode(this)">copy</button></div>
-        <div class="step-note">Or download it manually from the repository.</div>
+        <div class="step-desc">Save <strong>buddy-crack.js</strong> to any folder. It's a standalone Node.js script — no dependencies. Requires <a href="https://nodejs.org" target="_blank" style="color:var(--accent)">Node.js 18+</a>.</div>
+        <div class="code-block">curl -O https://raw.githubusercontent.com/Pickle-Pixel/claudecode-buddy-crack/main/buddy-crack.js<button class="code-copy-btn" onclick="copyCode(this)">copy</button></div>
+        <div class="step-note">Or <a href="https://github.com/Pickle-Pixel/claudecode-buddy-crack" target="_blank" style="color:var(--accent)">download from GitHub</a> directly.</div>
       </div>
     </div>
 
@@ -869,7 +830,7 @@ function refresh() {
 // --- Soul tabs ---
 function switchSoulTab(tab) {
   document.querySelectorAll('.soul-tab').forEach((t, i) =>
-    t.classList.toggle('active', ['auto','diy','manual'][i] === tab))
+    t.classList.toggle('active', ['diy','manual'][i] === tab))
   document.querySelectorAll('.soul-pane').forEach(p => p.classList.remove('active'))
   document.getElementById('pane-' + tab).classList.add('active')
   if (tab === 'diy') updateDiyPrompt()
@@ -931,60 +892,7 @@ function applyManualSoul() {
   badge.textContent = `${RARITY_STARS[state.rarity]} ${name.toUpperCase()}`
 }
 
-// --- Soul generation (auto) ---
-async function generateSoul() {
-  const apiKey = document.getElementById('api-key').value.trim()
-  const btn = document.getElementById('gen-btn')
-  const errEl = document.getElementById('error-msg')
-  const resultEl = document.getElementById('soul-result')
-
-  errEl.classList.remove('visible')
-
-  if (!apiKey) {
-    errEl.textContent = 'Enter your Anthropic API key above'
-    errEl.classList.add('visible')
-    return
-  }
-
-  btn.disabled = true
-  btn.textContent = 'Generating...'
-
-  try {
-    const bones = {
-      rarity: state.rarity,
-      species: state.species,
-      eye: state.eye,
-      hat: state.hat,
-      shiny: state.shiny,
-      stats: getStats(state.rarity),
-    }
-
-    const res = await fetch('/api/generate-soul', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ bones, apiKey }),
-    })
-
-    const data = await res.json()
-    if (data.error) throw new Error(data.error)
-
-    state.soul = data
-    document.getElementById('soul-name').textContent = data.name
-    document.getElementById('soul-personality').textContent = data.personality
-    resultEl.classList.add('visible')
-
-    // Update badge with name
-    const badge = document.getElementById('rarity-badge')
-    badge.textContent = `${RARITY_STARS[state.rarity]} ${data.name.toUpperCase()}`
-
-  } catch (err) {
-    errEl.textContent = err.message
-    errEl.classList.add('visible')
-  } finally {
-    btn.disabled = false
-    btn.textContent = 'Generate Name & Personality'
-  }
-}
+// (Auto soul generation removed — site is fully static)
 
 // --- Export ---
 function exportJSON() {
