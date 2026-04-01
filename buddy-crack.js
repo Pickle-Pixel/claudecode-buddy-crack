@@ -29,13 +29,12 @@ const VERSIONS_DIR = path.join(os.homedir(), '.local', 'share', 'claude', 'versi
 const CONFIG_PATH = path.join(os.homedir(), '.claude.json')
 
 // --- Patch pattern ---
-// getCompanion() minified: return{...H,...$} (bones win) → return{...$,...H} (stored win)
-// The function names between bones destructuring and return vary across platforms
-// (e.g. Gh$/Th$ on Windows, ZE8/vE8 on macOS) so we match by landmark instead.
-const LANDMARK    = Buffer.from('let{bones:$}=')
-const ORIG_RETURN = Buffer.from('return{...H,...$}')
-const PATCH_RETURN = Buffer.from('return{...$,...H}')
-const SEARCH_WINDOW = 60
+// getCompanion() minified: return{...A,...B} (bones win) → return{...B,...A} (stored win)
+// Function names and variable names differ across platform builds, so we find
+// `let{bones:` as a landmark, read the actual variable char, then match/swap
+// the return spread order in a window after it.
+const LANDMARK = Buffer.from('let{bones:')
+const SEARCH_WINDOW = 80
 
 // --- Valid options ---
 const SPECIES = ['duck','goose','blob','cat','dragon','octopus','owl','penguin','turtle','snail','ghost','axolotl','capybara','cactus','robot','rabbit','mushroom','chonk']
@@ -62,12 +61,18 @@ function findPatchSites(data) {
   const sites = []
   const landmarks = findAll(data, LANDMARK)
   for (const lm of landmarks) {
+    // Read the variable name right after "let{bones:"
+    const varStart = lm + LANDMARK.length
+    const varChar = data.slice(varStart, varStart + 1).toString('utf8')
+    if (data[varStart + 1] !== 0x7D) continue // next char must be '}' — skip non-getCompanion matches
+    const origReturn = Buffer.from(`return{...H,...${varChar}}`)
+    const patchReturn = Buffer.from(`return{...${varChar},...H}`)
     const windowEnd = Math.min(data.length, lm + LANDMARK.length + SEARCH_WINDOW)
     const window = data.slice(lm, windowEnd)
-    const origOff = window.indexOf(ORIG_RETURN)
-    const patchOff = window.indexOf(PATCH_RETURN)
-    if (origOff !== -1) sites.push({ offset: lm + origOff, state: 'original' })
-    else if (patchOff !== -1) sites.push({ offset: lm + patchOff, state: 'patched' })
+    const origOff = window.indexOf(origReturn)
+    const patchOff = window.indexOf(patchReturn)
+    if (origOff !== -1) sites.push({ offset: lm + origOff, state: 'original', origReturn, patchReturn })
+    else if (patchOff !== -1) sites.push({ offset: lm + patchOff, state: 'patched', origReturn, patchReturn })
   }
   return sites
 }
@@ -104,7 +109,7 @@ function applyPatch(binPath) {
     return true
   }
 
-  for (const site of origSites) PATCH_RETURN.copy(data, site.offset)
+  for (const site of origSites) site.patchReturn.copy(data, site.offset)
   try { fs.writeFileSync(binPath, data) } catch (e) {
     if (e.code === 'EBUSY') { console.error(`  ✗ File is locked — close Claude Code first`); return 'busy' }
     throw e
@@ -132,7 +137,7 @@ function removePatch(binPath) {
     return true
   }
 
-  for (const site of patchedSites) ORIG_RETURN.copy(data, site.offset)
+  for (const site of patchedSites) site.origReturn.copy(data, site.offset)
   try { fs.writeFileSync(binPath, data) } catch (e) {
     if (e.code === 'EBUSY') { console.error(`  ✗ File is locked — close Claude Code first`); return 'busy' }
     throw e
