@@ -186,13 +186,32 @@ function display(companion) {
 function readClipboard() {
   try {
     if (IS_WIN) {
-      return execSync('powershell -command "Get-Clipboard"', { encoding: 'utf8', timeout: 5000 }).trim()
+      // Force UTF-8 output from PowerShell to preserve Unicode characters like ✦ ◉ ω
+      const cmd = 'powershell -command "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-Clipboard"'
+      return execSync(cmd, { encoding: 'utf8', timeout: 5000 }).trim()
     } else if (IS_MAC) {
       return execSync('pbpaste', { encoding: 'utf8', timeout: 5000 }).trim()
     } else {
       return execSync('xclip -selection clipboard -o', { encoding: 'utf8', timeout: 5000 }).trim()
     }
   } catch { return null }
+}
+
+// Windows clipboard sometimes mangles Unicode. Map known corrupted values back.
+const EYE_REPAIR = { '?': '✦', '??': '✦', '\ufffd': '✦' }
+function repairCompanion(obj) {
+  if (obj && obj.eye && !EYES.includes(obj.eye)) {
+    // If eye got corrupted, try to repair it from the original eye list
+    // Most common corruption: ✦ → ? on Windows
+    if (EYE_REPAIR[obj.eye]) {
+      obj.eye = EYE_REPAIR[obj.eye]
+    } else {
+      // Default to star eyes since they're the most commonly selected
+      obj.eye = '✦'
+    }
+    console.log(`  (Repaired corrupted eye character → ${obj.eye})`)
+  }
+  return obj
 }
 
 function tryParseJSON(str) {
@@ -339,6 +358,9 @@ try {
 
 // Add hatchedAt if missing
 if (!companion.hatchedAt) companion.hatchedAt = Date.now()
+
+// Repair Windows clipboard damage
+repairCompanion(companion)
 
 // Validate
 const errors = validate(companion)
