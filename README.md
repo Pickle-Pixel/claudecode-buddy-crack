@@ -4,7 +4,7 @@ Customize your [Claude Code](https://docs.anthropic.com/en/docs/claude-code) com
 
 Claude Code has a hidden gacha companion system (the Buddy system) that assigns you a deterministic pet based on your account UUID. Your rarity, species, and stats are locked to your identity. This tool lets you override that and choose your own.
 
-<img width="2197" height="1480" alt="image" src="https://github.com/user-attachments/assets/584da50b-c246-41ec-9157-f53c9a825194" />
+<video src="https://github.com/Pickle-Pixel/claudecode-buddy-crack/releases/download/v0.0.0-assets/0401.mp4" controls width="100%"></video>
 
 ## [Use the Web Creator](https://pickle-pixel.com/buddy)
 
