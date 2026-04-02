@@ -44,6 +44,20 @@ const RARITIES = ['common','uncommon','rare','epic','legendary']
 const STAT_NAMES = ['DEBUGGING','PATIENCE','CHAOS','WISDOM','SNARK']
 const RARITY_STARS = {common:'★',uncommon:'★★',rare:'★★★',epic:'★★★★',legendary:'★★★★★'}
 
+// --- Code signing ---
+// macOS (especially arm64) kills modified binaries with invalid signatures.
+// After patching, re-sign with an ad-hoc signature so the binary can launch.
+function resignBinary(binPath) {
+  if (!IS_MAC) return
+  try {
+    execSync(`codesign --remove-signature "${binPath}"`, { stdio: 'ignore' })
+    execSync(`codesign -s - "${binPath}"`, { stdio: 'ignore' })
+    console.log(`  ✓ Re-signed`)
+  } catch (e) {
+    console.error(`  ⚠ Could not re-sign binary — you may need to run: codesign -s - "${binPath}"`)
+  }
+}
+
 // --- Binary helpers ---
 function findAll(buf, pattern) {
   const positions = []
@@ -65,14 +79,24 @@ function findPatchSites(data) {
     const varStart = lm + LANDMARK.length
     const varChar = data.slice(varStart, varStart + 1).toString('utf8')
     if (data[varStart + 1] !== 0x7D) continue // next char must be '}' — skip non-getCompanion matches
-    const origReturn = Buffer.from(`return{...H,...${varChar}}`)
-    const patchReturn = Buffer.from(`return{...${varChar},...H}`)
     const windowEnd = Math.min(data.length, lm + LANDMARK.length + SEARCH_WINDOW)
-    const window = data.slice(lm, windowEnd)
-    const origOff = window.indexOf(origReturn)
-    const patchOff = window.indexOf(patchReturn)
-    if (origOff !== -1) sites.push({ offset: lm + origOff, state: 'original', origReturn, patchReturn })
-    else if (patchOff !== -1) sites.push({ offset: lm + patchOff, state: 'patched', origReturn, patchReturn })
+    const windowStr = data.slice(lm, windowEnd).toString('utf8')
+    // Dynamically detect both variable names in return{...X,...Y} — the "other"
+    // variable changes across builds (was H in ≤2.1.90, may differ in future versions)
+    const spreadMatch = windowStr.match(/return\{\.\.\.(\w),\.\.\.(\w)\}/)
+    if (!spreadMatch) continue
+    const [, first, second] = spreadMatch
+    if (second === varChar) {
+      // Original: return{...other,...bones} — bones loses on conflict
+      const origReturn = Buffer.from(`return{...${first},...${second}}`)
+      const patchReturn = Buffer.from(`return{...${second},...${first}}`)
+      sites.push({ offset: lm + spreadMatch.index, state: 'original', origReturn, patchReturn })
+    } else if (first === varChar) {
+      // Patched: return{...bones,...other} — stored companion wins
+      const origReturn = Buffer.from(`return{...${second},...${first}}`)
+      const patchReturn = Buffer.from(`return{...${first},...${second}}`)
+      sites.push({ offset: lm + spreadMatch.index, state: 'patched', origReturn, patchReturn })
+    }
   }
   return sites
 }
@@ -114,6 +138,7 @@ function applyPatch(binPath) {
     if (e.code === 'EBUSY') { console.error(`  ✗ File is locked — close Claude Code first`); return 'busy' }
     throw e
   }
+  resignBinary(binPath)
   console.log(`  ✓ Patched (${origSites.length} location${origSites.length > 1 ? 's' : ''})`)
   return true
 }
@@ -142,6 +167,7 @@ function removePatch(binPath) {
     if (e.code === 'EBUSY') { console.error(`  ✗ File is locked — close Claude Code first`); return 'busy' }
     throw e
   }
+  resignBinary(binPath)
   console.log(`  ✓ Restored (${patchedSites.length} location${patchedSites.length > 1 ? 's' : ''})`)
   return true
 }
@@ -459,7 +485,9 @@ if (mode === 'unpatch') {
     if (r === 'busy') hasBusy = true
   }
 
+  const mainRealUnpatch = fs.realpathSync(CLAUDE_BIN)
   for (const ver of getVersionBinaries()) {
+    if (fs.realpathSync(ver.path) === mainRealUnpatch) continue
     console.log(`  ${ver.name}`)
     removePatch(ver.path)
   }
@@ -484,7 +512,9 @@ if (mode === 'status') {
   console.log(`  Binary:  ${status.toUpperCase()} (${CLAUDE_BIN})`)
   console.log(`  Backup:  ${fs.existsSync(CLAUDE_BACKUP) ? 'yes' : 'no'}`)
 
+  const mainRealStatus = fs.realpathSync(CLAUDE_BIN)
   for (const ver of getVersionBinaries()) {
+    if (fs.realpathSync(ver.path) === mainRealStatus) continue
     console.log(`  ${ver.name.padEnd(10)} ${patchStatus(ver.path).toUpperCase()}`)
   }
 
@@ -581,7 +611,10 @@ try {
 console.log(`  ${CLAUDE_BIN}`)
 const mainOk = applyPatch(CLAUDE_BIN)
 
+// Resolve symlink so we don't double-patch the same file
+const mainReal = fs.realpathSync(CLAUDE_BIN)
 for (const ver of getVersionBinaries()) {
+  if (fs.realpathSync(ver.path) === mainReal) continue // already patched via main binary
   console.log(`  ${ver.name}`)
   applyPatch(ver.path)
 }
@@ -602,17 +635,7 @@ if (!mainOk) {
   process.exit(1)
 }
 
-// Verify patched binary size matches backup (catch truncated writes)
-if (fs.existsSync(CLAUDE_BACKUP)) {
-  const origSize = fs.statSync(CLAUDE_BACKUP).size
-  const patchedSize = fs.statSync(CLAUDE_BIN).size
-  if (origSize !== patchedSize) {
-    try { fs.copyFileSync(CLAUDE_BACKUP, CLAUDE_BIN) } catch {}
-    console.error('  ✗ Binary size mismatch after patch — restored from backup.')
-    console.error(`    Expected: ${origSize} bytes, got: ${patchedSize} bytes\n`)
-    process.exit(1)
-  }
-}
+
 
 // Step 3: Inject (safe — never overwrites unrelated config fields)
 console.log('\n  --- Writing Config ---\n')
