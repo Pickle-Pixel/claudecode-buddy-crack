@@ -44,6 +44,20 @@ const RARITIES = ['common','uncommon','rare','epic','legendary']
 const STAT_NAMES = ['DEBUGGING','PATIENCE','CHAOS','WISDOM','SNARK']
 const RARITY_STARS = {common:'★',uncommon:'★★',rare:'★★★',epic:'★★★★',legendary:'★★★★★'}
 
+// --- Code signing ---
+// macOS arm64 kills modified binaries with invalid signatures.
+// Re-sign with ad-hoc signature after patching so the binary can launch.
+function resignBinary(binPath) {
+  if (!IS_MAC) return
+  try {
+    execSync(`codesign --remove-signature "${binPath}"`, { stdio: 'ignore' })
+    execSync(`codesign -s - "${binPath}"`, { stdio: 'ignore' })
+    console.log(`  ✓ Re-signed`)
+  } catch {
+    console.error(`  ⚠ Could not re-sign binary — run: codesign -s - "${binPath}"`)
+  }
+}
+
 // --- Binary helpers ---
 function findAll(buf, pattern) {
   const positions = []
@@ -65,14 +79,20 @@ function findPatchSites(data) {
     const varStart = lm + LANDMARK.length
     const varChar = data.slice(varStart, varStart + 1).toString('utf8')
     if (data[varStart + 1] !== 0x7D) continue // next char must be '}' — skip non-getCompanion matches
-    const origReturn = Buffer.from(`return{...H,...${varChar}}`)
-    const patchReturn = Buffer.from(`return{...${varChar},...H}`)
     const windowEnd = Math.min(data.length, lm + LANDMARK.length + SEARCH_WINDOW)
-    const window = data.slice(lm, windowEnd)
-    const origOff = window.indexOf(origReturn)
-    const patchOff = window.indexOf(patchReturn)
-    if (origOff !== -1) sites.push({ offset: lm + origOff, state: 'original', origReturn, patchReturn })
-    else if (patchOff !== -1) sites.push({ offset: lm + patchOff, state: 'patched', origReturn, patchReturn })
+    const windowStr = data.slice(lm, windowEnd).toString('utf8')
+    const spreadMatch = windowStr.match(/return\{\.\.\.([\w$]),\.\.\.([\w$])\}/)
+    if (!spreadMatch) continue
+    const [, first, second] = spreadMatch
+    if (second === varChar) {
+      const origReturn = Buffer.from(`return{...${first},...${second}}`)
+      const patchReturn = Buffer.from(`return{...${second},...${first}}`)
+      sites.push({ offset: lm + spreadMatch.index, state: 'original', origReturn, patchReturn })
+    } else if (first === varChar) {
+      const origReturn = Buffer.from(`return{...${second},...${first}}`)
+      const patchReturn = Buffer.from(`return{...${first},...${second}}`)
+      sites.push({ offset: lm + spreadMatch.index, state: 'patched', origReturn, patchReturn })
+    }
   }
   return sites
 }
@@ -114,6 +134,12 @@ function applyPatch(binPath) {
     if (e.code === 'EBUSY') { console.error(`  ✗ File is locked — close Claude Code first`); return 'busy' }
     throw e
   }
+  const writtenSize = fs.statSync(binPath).size
+  if (writtenSize !== data.length) {
+    console.error(`  ✗ Binary size mismatch after write — expected ${data.length}, got ${writtenSize}`)
+    return false
+  }
+  resignBinary(binPath)
   console.log(`  ✓ Patched (${origSites.length} location${origSites.length > 1 ? 's' : ''})`)
   return true
 }
@@ -142,6 +168,12 @@ function removePatch(binPath) {
     if (e.code === 'EBUSY') { console.error(`  ✗ File is locked — close Claude Code first`); return 'busy' }
     throw e
   }
+  const writtenSize = fs.statSync(binPath).size
+  if (writtenSize !== data.length) {
+    console.error(`  ✗ Binary size mismatch after write — expected ${data.length}, got ${writtenSize}`)
+    return false
+  }
+  resignBinary(binPath)
   console.log(`  ✓ Restored (${patchedSites.length} location${patchedSites.length > 1 ? 's' : ''})`)
   return true
 }
@@ -446,6 +478,7 @@ if (mode === 'unpatch') {
   if (fs.existsSync(CLAUDE_BACKUP)) {
     try {
       fs.copyFileSync(CLAUDE_BACKUP, CLAUDE_BIN)
+      resignBinary(CLAUDE_BIN)
       console.log(`  ✓ Restored from backup`)
     } catch (e) {
       if (e.code === 'EBUSY') {
@@ -568,6 +601,12 @@ if (mode === 'guard') {
     const oldPath = CLAUDE_BIN + '.old.' + Date.now()
     fs.renameSync(CLAUDE_BIN, oldPath)
     fs.writeFileSync(CLAUDE_BIN, data)
+    const writtenSize = fs.statSync(CLAUDE_BIN).size
+    if (writtenSize !== data.length) {
+      try { fs.renameSync(oldPath, CLAUDE_BIN) } catch {}
+      process.exit(1)
+    }
+    resignBinary(CLAUDE_BIN)
     try { fs.unlinkSync(oldPath) } catch {}
   } catch {}
 
@@ -669,23 +708,12 @@ if (!mainOk) {
   try {
     if (fs.existsSync(CLAUDE_BACKUP)) {
       fs.copyFileSync(CLAUDE_BACKUP, CLAUDE_BIN)
+      resignBinary(CLAUDE_BIN)
       console.log('  ✓ Restored original binary from backup')
     }
   } catch {}
   console.error('\n  ✗ Failed to patch. This version may not be supported.\n')
   process.exit(1)
-}
-
-// Verify patched binary size matches backup (catch truncated writes)
-if (fs.existsSync(CLAUDE_BACKUP)) {
-  const origSize = fs.statSync(CLAUDE_BACKUP).size
-  const patchedSize = fs.statSync(CLAUDE_BIN).size
-  if (origSize !== patchedSize) {
-    try { fs.copyFileSync(CLAUDE_BACKUP, CLAUDE_BIN) } catch {}
-    console.error('  ✗ Binary size mismatch after patch — restored from backup.')
-    console.error(`    Expected: ${origSize} bytes, got: ${patchedSize} bytes\n`)
-    process.exit(1)
-  }
 }
 
 // Step 3: Inject (safe — never overwrites unrelated config fields)
