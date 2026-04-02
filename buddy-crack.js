@@ -468,6 +468,24 @@ if (mode === 'unpatch') {
   console.log('\n  --- Cleaning Config ---\n')
   removeCompanion()
 
+  // Remove guard hook
+  console.log('\n  --- Removing Guard Hook ---\n')
+  const SETTINGS_PATH_U = path.join(os.homedir(), '.claude', 'settings.json')
+  try {
+    if (fs.existsSync(SETTINGS_PATH_U)) {
+      const settings = JSON.parse(fs.readFileSync(SETTINGS_PATH_U, 'utf8'))
+      if (settings.hooks?.SessionStart) {
+        settings.hooks.SessionStart = settings.hooks.SessionStart.filter(entry =>
+          !entry.hooks?.some(h => h.command && h.command.includes('buddy-crack') && h.command.includes('guard'))
+        )
+        if (settings.hooks.SessionStart.length === 0) delete settings.hooks.SessionStart
+        if (Object.keys(settings.hooks).length === 0) delete settings.hooks
+        fs.writeFileSync(SETTINGS_PATH_U, JSON.stringify(settings, null, 2) + '\n')
+        console.log('  ✓ Guard hook removed')
+      }
+    }
+  } catch {}
+
   if (hasBusy) {
     console.log('\n  ⚠ Main binary is locked. Close all Claude Code sessions and run again.\n')
   } else {
@@ -675,6 +693,45 @@ console.log('\n  --- Writing Config ---\n')
 
 injectCompanion(companion)
 console.log(`  ✓ Written to ${CONFIG_PATH}`)
+
+// Step 4: Install guard hook (survives auto-updates)
+console.log('\n  --- Installing Guard Hook ---\n')
+
+const SETTINGS_PATH = path.join(os.homedir(), '.claude', 'settings.json')
+const guardCmd = `node ${__filename.replace(/\\/g, '/')} guard`
+
+try {
+  let settings = {}
+  if (fs.existsSync(SETTINGS_PATH)) {
+    try { settings = JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8')) } catch {}
+  } else {
+    fs.mkdirSync(path.dirname(SETTINGS_PATH), { recursive: true })
+  }
+
+  const hooks = settings.hooks || {}
+  const sessionHooks = hooks.SessionStart || []
+
+  const alreadyInstalled = sessionHooks.some(entry =>
+    entry.hooks?.some(h => h.command && h.command.includes('buddy-crack') && h.command.includes('guard'))
+  )
+
+  if (alreadyInstalled) {
+    console.log('  ✓ Guard hook already installed')
+  } else {
+    sessionHooks.push({
+      matcher: '',
+      hooks: [{ type: 'command', command: guardCmd, timeout: 15 }]
+    })
+    hooks.SessionStart = sessionHooks
+    settings.hooks = hooks
+    fs.writeFileSync(SETTINGS_PATH, JSON.stringify(settings, null, 2) + '\n')
+    console.log(`  ✓ Guard hook added to ${SETTINGS_PATH}`)
+    console.log('  Auto-updates will never kill your companion again.')
+  }
+} catch (e) {
+  console.log(`  ⚠ Could not install guard hook: ${e.message}`)
+  console.log(`  Add it manually — see: https://github.com/Pickle-Pixel/claudecode-buddy-crack#surviving-auto-updates`)
+}
 
 // Done
 console.log(`

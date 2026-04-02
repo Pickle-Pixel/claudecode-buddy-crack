@@ -48,30 +48,7 @@ node buddy-crack.js guard              # Auto-repatch (for SessionStart hook)
 
 ## Surviving Auto-Updates
 
-Claude Code auto-updates weekly and overwrites the patched binary. The `guard` command solves this permanently by hooking into Claude Code's own startup sequence.
-
-**One-time setup** — add this to `~/.claude/settings.json`:
-
-```json
-{
-  "hooks": {
-    "SessionStart": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node /path/to/buddy-crack.js guard",
-            "timeout": 15
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
-Replace `/path/to/buddy-crack.js` with the actual absolute path. On Windows use forward slashes: `"node C:/Users/You/buddy-crack.js guard"`.
+Claude Code auto-updates weekly and overwrites the patched binary. The patcher automatically installs a `SessionStart` hook that re-patches on every launch — no manual setup needed.
 
 Every time Claude Code starts (any terminal, any project), the guard silently:
 
@@ -80,7 +57,7 @@ Every time Claude Code starts (any terminal, any project), the guard silently:
 3. If the main binary was overwritten by an auto-update, patches it on the spot using the same atomic rename trick the updater itself uses — works even while other sessions are running
 4. Exits instantly if already patched
 
-No manual re-patching, no restarts, no gaps.
+No manual re-patching, no restarts, no gaps. The hook is removed cleanly by `node buddy-crack.js unpatch`.
 
 ## How It Works
 

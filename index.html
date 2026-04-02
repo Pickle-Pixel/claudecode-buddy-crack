@@ -603,12 +603,11 @@
     </div>
 
     <div class="step">
-      <div class="step-num">4</div>
+      <div class="step-num" style="background:var(--text-dim)">&#10003;</div>
       <div class="step-content">
-        <div class="step-title">Stay patched forever (optional)</div>
-        <div class="step-desc">Claude Code auto-updates weekly and overwrites the patch. Add this one-time hook to <code>~/.claude/settings.json</code> and it re-patches automatically on every launch:</div>
-        <div class="code-block">"hooks": { "SessionStart": [{ "matcher": "", "hooks": [{ "type": "command", "command": "node /path/to/buddy-crack.js guard", "timeout": 15 }] }] }<button class="code-copy-btn" onclick="copyCode(this)">copy</button></div>
-        <div class="step-note">Replace <code>/path/to/buddy-crack.js</code> with the real path. On Windows use forward slashes. The guard is silent and adds no startup delay.</div>
+        <div class="step-title">Auto-update protection</div>
+        <div class="step-desc">The patcher automatically installs a startup hook that re-patches the binary whenever Claude Code auto-updates. Your companion survives forever — no manual re-patching needed.</div>
+        <div class="step-note">The hook is removed cleanly if you run <code>node buddy-crack.js unpatch</code>.</div>
       </div>
     </div>
 
